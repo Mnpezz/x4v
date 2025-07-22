@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>x4v Post Generator</title>
+  <style>
+    :root {
+      --bg: #f4f4f4;
+      --text: #222;
+      --feed-bg: #fff;
+      --post-border: #eee;
+    }
+    body.dark {
+      --bg: #181a20;
+      --text: #eee;
+      --feed-bg: #23242a;
+      --post-border: #333;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 2em;
+    }
+    label {
+      display: block;
+      margin-top: 1em;
+    }
+    select, input, textarea {
+      width: 100%;
+      margin-top: 0.5em;
+      padding: 0.5em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+    }
+    textarea {
+      height: 150px;
+      margin-top: 1em;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+  <link rel="stylesheet" href="menu.css">
+  <link rel="icon" type="image/png" href="x4v.png">
+</head>
+<body>
+<div id="menu-placeholder"></div>
+<script>
+  fetch('menu.html').then(r => r.text()).then(html => {
+    document.getElementById('menu-placeholder').innerHTML = html;
+    const script = document.createElement('script');
+    script.src = 'menu.js';
+    script.onload = () => { if (window.initMenu) window.initMenu(); };
+    document.body.appendChild(script);
+  });
+</script>
+
+  <h1>x4v Post Generator</h1>
+  <p>Create a formatted Nostr post for your help/work/trade offer.</p>
+
+  <label for="postType">I am a...</label>
+  <select id="postType">
+    <option value="host">Host (looking for help)</option>
+    <option value="helper">Helper (offering help)</option>
+    <option value="exchange">Item/Skill Exchange</option>
+  </select>
+
+  <div id="formFields">
+    <label for="what">What are you offering or looking for?</label>
+    <input type="text" id="what" placeholder="e.g. Gardening help, spare motorcycle">
+
+    <label for="when">When?</label>
+    <input type="text" id="when" placeholder="e.g. July 20–27, or 'ongoing'">
+
+    <label for="where">Where?</label>
+    <input type="text" id="where" placeholder="e.g. Flagstaff, AZ or Southeast USA">
+
+    <label for="value">What value are you offering/requesting?</label>
+    <input type="text" id="value" placeholder="e.g. Room + meals, or web design skills">
+
+    <label for="contact">Contact instructions (optional)</label>
+    <input type="text" id="contact" placeholder="e.g. DM me or reply here">
+  </div>
+
+  <button onclick="generatePost()">Generate Post</button>
+  <label for="output">Your Nostr Post:</label>
+  <textarea id="output" readonly></textarea>
+  <div style="display:flex;gap:1em;justify-content:center;align-items:center;margin:1em 0;flex-wrap:wrap;">
+    <button onclick="copyToClipboard()">Copy to Clipboard</button>
+    <span style="color:#888;">— or —</span>
+    <button id="nostr-post-btn" style="display:none;">Post to Nostr</button>
+  </div>
+
+  <script>
+    function generatePost() {
+      const postType = document.getElementById("postType").value;
+      const what = document.getElementById("what").value;
+      const when = document.getElementById("when").value;
+      const where = document.getElementById("where").value;
+      const value = document.getElementById("value").value;
+      const contact = document.getElementById("contact").value;
+
+      let output = "";
+
+      if (postType === "host") {
+        output += `ISO: ${what}\n`;
+        output += `WHEN: ${when}\n`;
+        output += `WHERE: ${where}\n`;
+        output += `OFFERING: ${value}\n`;
+      } else if (postType === "helper") {
+        output += `SKILLS: ${what}\n`;
+        output += `AVAILABILITY: ${when}\n`;
+        output += `WHERE: ${where}\n`;
+        output += `LOOKING FOR: ${value}\n`;
+      } else if (postType === "exchange") {
+        output += `OFFERING: ${what}\n`;
+        output += `LOOKING FOR: ${value}\n`;
+        output += `WHEN: ${when}\n`;
+        output += `WHERE: ${where}\n`;
+      }
+
+      if (contact) output += `CONTACT: ${contact}\n`;
+
+      // Auto-tags
+      output += `#x4v #${postType}\n`;
+
+      document.getElementById("output").value = output;
+    }
+
+    function copyToClipboard() {
+      const text = document.getElementById("output");
+      text.select();
+      text.setSelectionRange(0, 99999); // mobile
+      document.execCommand("copy");
+      alert("Post copied to clipboard!");
+    }
+
+    // Show/hide Nostr post button based on sign-in
+    function updateNostrPostBtn() {
+      const btn = document.getElementById('nostr-post-btn');
+      if (window.nostrPubkey) {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    }
+    // Run on load and after menu loads
+    setTimeout(updateNostrPostBtn, 500);
+    // Listen for sign-in (menu sets window.nostrPubkey)
+    window.addEventListener('focus', updateNostrPostBtn);
+
+    // Post to Nostr logic
+    document.getElementById('nostr-post-btn').onclick = async function() {
+      if (!window.nostr || !window.nostrPubkey) {
+        alert('Please sign in with nos2x first.');
+        return;
+      }
+      const content = document.getElementById('output').value.trim();
+      if (!content) {
+        alert('Please generate a post first.');
+        return;
+      }
+      // Compose Nostr event
+      const event = {
+        kind: 1,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [],
+        content,
+        pubkey: window.nostrPubkey
+      };
+      try {
+        // Sign event
+        const signed = await window.nostr.signEvent(event);
+        // Publish to a relay (simple example, wss://relay.nostr.band)
+        const relay = new WebSocket('wss://relay.nostr.band');
+        relay.onopen = () => {
+          relay.send(JSON.stringify(["EVENT", signed]));
+          alert('Posted to Nostr!');
+          relay.close();
+        };
+        relay.onerror = () => alert('Relay connection failed.');
+      } catch (e) {
+        alert('Failed to post: ' + (e.message || e));
+      }
+    };
+  </script>
+<div id="footer-placeholder"></div>
+<script>
+  fetch('footer.html').then(r => r.text()).then(html => {
+    document.getElementById('footer-placeholder').innerHTML = html;
+  });
+</script>
+</body>
+</html>
