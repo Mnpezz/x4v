@@ -4,6 +4,11 @@ Welcome to a decentralized way to trade skills, shelter, and time — without mi
 
 ---
 
+## 🚀 Live Demo
+[View Live Demo](https://mnpezz.github.io/x4v/)
+
+---
+
 ## 🔧 What This Is
 
 * A **peer-to-peer exchange network** using simple Nostr posts
